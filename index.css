@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #F8F9FA;
+}
+
+/* Custom styles based on the previous inline styles */
+.bg-ap-blue {
+    background-color: #004071;
+}
+
+.text-ap-blue {
+    color: #004071;
+}
+
+.bg-ap-green {
+    background-color: #ABC91A;
+}
+
+.text-ap-green {
+    color: #ABC91A;
+}
