@@ -1,16 +1,18 @@
 import React from 'react';
-import { MatchRecord, ScoreEntry } from '../types';
-import { Calendar, Trophy, ArrowLeft, Trash2, User, ChevronRight, Award } from 'lucide-react';
+import { MatchRecord, ScoreEntry, Member } from '../types';
+import { Calendar, Trophy, ArrowLeft, Trash2, User, ChevronRight, Award, Download, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface Props {
     history: MatchRecord[];
+    allMembers: Member[];
     onBack: () => void;
     onDelete: (id: string) => void;
     onUpdateGolfCourse: (id: string, golfCourse: string) => void;
+    onImportData: (history: MatchRecord[], members: Member[]) => void;
 }
 
-const HistoryView: React.FC<Props> = ({ history, onBack, onDelete, onUpdateGolfCourse }) => {
+const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, onUpdateGolfCourse, onImportData }) => {
     // Calculate cumulative scores
     const memberStats = history.reduce((acc, match) => {
         if (!match || !match.groups) return acc;
@@ -70,6 +72,43 @@ const HistoryView: React.FC<Props> = ({ history, onBack, onDelete, onUpdateGolfC
             }
             return { ...player, rank };
         });
+    };
+
+    const handleExport = () => {
+        const data = {
+            history,
+            members: allMembers,
+            exportDate: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `ap_golf_data_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = JSON.parse(event.target?.result as string);
+                if (data.history && data.members) {
+                    if (confirm('현재 데이터를 덮어쓰고 파일의 내용을 불러오시겠습니까?')) {
+                        onImportData(data.history, data.members);
+                    }
+                } else {
+                    alert('올바른 형식의 파일이 아닙니다.');
+                }
+            } catch (err) {
+                alert('파일을 읽는 중 오류가 발생했습니다.');
+            }
+        };
+        reader.readAsText(file);
     };
 
     const formatDate = (dateString: string) => {
@@ -253,6 +292,43 @@ const HistoryView: React.FC<Props> = ({ history, onBack, onDelete, onUpdateGolfC
                         아직 기록된 경기가 없습니다.
                     </div>
                 )}
+            </section>
+
+            {/* Data Management Section */}
+            <section className="bg-white rounded-[3rem] p-8 md:p-12 shadow-xl border-2 border-gray-50 mt-10">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div>
+                        <h3 className="text-2xl font-black text-[#004071] mb-2">백업 및 데이터 관리</h3>
+                        <p className="text-gray-400 font-bold">기기를 변경하시거나 데이터를 안전하게 보관하고 싶을 때 사용하세요.</p>
+                    </div>
+                    <div className="flex gap-4">
+                        <button
+                            onClick={handleExport}
+                            className="bg-white border-2 border-[#004071] text-[#004071] px-6 py-4 rounded-2xl font-bold hover:bg-gray-50 transition-all flex items-center gap-2"
+                        >
+                            <Download size={20} />
+                            데이터 내보내기 (저장)
+                        </button>
+                        <div className="relative">
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={handleImport}
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                            />
+                            <button className="bg-[#ABC91A] text-[#004071] px-6 py-4 rounded-2xl font-bold hover:bg-[#99b317] transition-all flex items-center gap-2 shadow-lg shadow-[#ABC91A]/20">
+                                <Upload size={20} />
+                                데이터 불러오기 (복구)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div className="mt-8 p-6 bg-blue-50 rounded-2xl border border-blue-100 italic">
+                    <p className="text-blue-800 text-sm font-bold">
+                        * 주의: '데이터 불러오기'를 하면 현재 저장된 모든 기록과 멤버 명단이 파일의 내용으로 교체됩니다.
+                        중요한 정보가 있다면 먼저 '내보내기'로 저장해 두세요.
+                    </p>
+                </div>
             </section>
 
             <div className="flex justify-center pt-8">

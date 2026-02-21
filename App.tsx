@@ -83,6 +83,12 @@ const App: React.FC = () => {
     ));
   };
 
+  const handleImportData = (newHistory: MatchRecord[], newMembers: Member[]) => {
+    if (newHistory.length > 0) setHistory(newHistory);
+    if (newMembers.length > 0) setAllMembers(newMembers);
+    alert('데이터를 성공적으로 불러왔습니다!');
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F9FA]">
       <Header onViewHistory={() => setView(AppView.HISTORY)} />
@@ -125,9 +131,11 @@ const App: React.FC = () => {
         {view === AppView.HISTORY && (
           <HistoryView
             history={history}
+            allMembers={allMembers}
             onBack={() => setView(AppView.MANAGE_MEMBERS)}
             onDelete={handleDeleteHistory}
             onUpdateGolfCourse={handleUpdateGolfCourse}
+            onImportData={handleImportData}
           />
         )}
       </main>
