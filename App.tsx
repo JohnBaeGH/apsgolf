@@ -58,7 +58,10 @@ const App: React.FC = () => {
       // 2. Fetch History
       const { data: dbHistory, error: hError } = await supabase.from('match_history').select('*').order('date', { ascending: false });
       if (!hError && dbHistory) {
-        setHistory(dbHistory as MatchRecord[]);
+        setHistory(dbHistory.map(record => ({
+          ...record,
+          golfCourse: record.golf_course, // Map snake_case to camelCase
+        })) as MatchRecord[]);
       }
     };
     fetchData();

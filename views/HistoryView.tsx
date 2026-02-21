@@ -169,8 +169,12 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                                                     <span className="text-[#ABC91A] font-black text-sm italic">@</span>
                                                     <input
                                                         type="text"
-                                                        value={record.golfCourse || ''}
-                                                        onChange={(e) => onUpdateGolfCourse(record.id, e.target.value)}
+                                                        defaultValue={record.golfCourse || ''}
+                                                        onBlur={(e) => {
+                                                            if (e.target.value !== (record.golfCourse || '')) {
+                                                                onUpdateGolfCourse(record.id, e.target.value);
+                                                            }
+                                                        }}
                                                         placeholder="골프장 입력"
                                                         className="bg-transparent border-b border-dashed border-gray-200 focus:border-[#ABC91A] focus:outline-none text-[#ABC91A] font-black text-sm italic placeholder:text-gray-300 w-40"
                                                     />
