@@ -22,6 +22,7 @@ const ResultView: React.FC<Props> = ({ results, history, onReset, onSave }) => {
   const [editableGroups, setEditableGroups] = useState<DrawingGroup[]>(results);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedMember, setSelectedMember] = useState<{ groupId: number, name: string } | null>(null);
+  const [showCourseError, setShowCourseError] = useState(false);
 
   useEffect(() => {
     setEditableGroups(results);
@@ -116,6 +117,12 @@ const ResultView: React.FC<Props> = ({ results, history, onReset, onSave }) => {
   };
 
   const handleSaveMatch = () => {
+    if (!golfCourse.trim()) {
+      setShowCourseError(true);
+      alert('골프장 이름을 입력해 주세요.');
+      return;
+    }
+
     const resultsWithScores = editableGroups.map(group => ({
       ...group,
       scores: group.members.map(name => ({
@@ -250,9 +257,20 @@ const ResultView: React.FC<Props> = ({ results, history, onReset, onSave }) => {
             type="text"
             placeholder="골프장 이름을 입력하세요 (예: 잭니클라우스 CC)"
             value={golfCourse}
-            onChange={(e) => setGolfCourse(e.target.value)}
-            className="w-full px-5 py-4 rounded-2xl border-2 border-gray-100 focus:border-[#ABC91A] focus:outline-none transition-colors font-bold text-[#004071] bg-gray-50/30"
+            onChange={(e) => {
+              setGolfCourse(e.target.value);
+              if (e.target.value.trim()) setShowCourseError(false);
+            }}
+            className={`w-full px-5 py-4 rounded-2xl border-2 transition-colors font-bold text-[#004071] bg-gray-50/30 focus:outline-none ${showCourseError
+                ? 'border-red-500 bg-red-50 focus:border-red-600'
+                : 'border-gray-100 focus:border-[#ABC91A]'
+              }`}
           />
+          {showCourseError && (
+            <p className="text-red-500 text-xs font-bold pl-2 animate-pulse">
+              * 기록 저장을 위해 골프장 이름을 반드시 입력해 주세요.
+            </p>
+          )}
         </div>
 
         <div className="bg-[#E9ECEF] p-6 rounded-3xl border-2 border-[#DEE2E6] flex flex-col justify-between gap-4">
