@@ -9,11 +9,24 @@ export interface DrawingGroup {
   members: string[];
 }
 
+export interface ScoreEntry {
+  memberName: string;
+  score: number;
+}
+
+export interface MatchRecord {
+  id: string;
+  date: string;
+  golfCourse?: string;
+  groups: (DrawingGroup & { scores: ScoreEntry[] })[];
+}
+
 export enum AppView {
   MANAGE_MEMBERS = 'MANAGE_MEMBERS',
   SETTINGS = 'SETTINGS',
   DRAWING = 'DRAWING',
-  RESULT = 'RESULT'
+  RESULT = 'RESULT',
+  HISTORY = 'HISTORY'
 }
 
 export interface AppState {
@@ -22,4 +35,5 @@ export interface AppState {
   selectedMemberIds: string[];
   membersPerGroup: number;
   drawingResults: DrawingGroup[];
+  history: MatchRecord[];
 }

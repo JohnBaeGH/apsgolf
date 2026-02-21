@@ -1,16 +1,28 @@
-
 import React from 'react';
+import { History } from 'lucide-react';
 
-const Header: React.FC = () => {
+interface Props {
+  onViewHistory: () => void;
+}
+
+const Header: React.FC<Props> = ({ onViewHistory }) => {
   return (
     <header className="bg-white text-[#004071] py-4 shadow-md border-b-4 border-[#ABC91A]">
       <div className="container mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4">
+          <button
+            onClick={onViewHistory}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-2 font-bold text-sm"
+            title="기록 보기"
+          >
+            <History size={20} />
+            <span className="hidden md:inline">기록 보기</span>
+          </button>
           <div className="flex items-center">
             {/* Horizontal CI Logo */}
-            <img 
-              src="logo_horizontal.png" 
-              alt="AP Systems Logo" 
+            <img
+              src="logo_horizontal.png"
+              alt="AP Systems Logo"
               className="h-10 md:h-12 w-auto object-contain"
               onError={(e) => {
                 // Fallback if image not found
