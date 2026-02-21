@@ -124,15 +124,12 @@ const HistoryView: React.FC<Props> = ({ history, onBack, onDelete }) => {
                                                 <Calendar size={24} />
                                             </div>
                                             <div>
-                                                <h4 className="font-black text-[#004071] text-xl">{formatDate(record.date)}</h4>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-gray-400 font-bold">{record.groups?.length || 0}개 조 경기</p>
-                                                    {record.golfCourse && (
-                                                        <>
-                                                            <span className="text-gray-200">|</span>
-                                                            <span className="text-[#ABC91A] font-black text-sm">{record.golfCourse}</span>
-                                                        </>
-                                                    )}
+                                                <h4 className="font-black text-[#004071] text-xl leading-tight">{formatDate(record.date)}</h4>
+                                                {record.golfCourse && (
+                                                    <p className="text-[#ABC91A] font-black text-sm italic mt-0.5">@ {record.golfCourse}</p>
+                                                )}
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <p className="text-gray-400 font-bold text-xs uppercase tracking-wider">{record.groups?.length || 0} 조 경기 완료</p>
                                                 </div>
                                             </div>
                                         </div>
