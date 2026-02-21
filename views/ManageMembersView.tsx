@@ -1,16 +1,17 @@
 
 import React, { useState } from 'react';
 import { Member } from '../types';
-import { Plus, Trash2, Users, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Users, ChevronRight, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props {
   members: Member[];
   setMembers: React.Dispatch<React.SetStateAction<Member[]>>;
   onNext: () => void;
+  onViewHistory: () => void;
 }
 
-const ManageMembersView: React.FC<Props> = ({ members, setMembers, onNext }) => {
+const ManageMembersView: React.FC<Props> = ({ members, setMembers, onNext, onViewHistory }) => {
   const [newName, setNewName] = useState('');
 
   const addMember = () => {
@@ -30,10 +31,19 @@ const ManageMembersView: React.FC<Props> = ({ members, setMembers, onNext }) => 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-[#004071] flex items-center gap-2">
-          <Users className="text-[#ABC91A]" />
-          임원 명단 관리
-        </h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-2xl font-bold text-[#004071] flex items-center gap-2">
+            <Users className="text-[#ABC91A]" />
+            임원 명단 관리
+          </h2>
+          <button
+            onClick={onViewHistory}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-[#004071] rounded-xl text-xs font-bold transition-all border border-gray-200"
+          >
+            <History size={14} className="text-[#ABC91A]" />
+            이전 경기 기록 보기
+          </button>
+        </div>
         <span className="text-sm text-gray-400 font-medium">현재 등록 {members.length}명</span>
       </div>
 

@@ -87,6 +87,7 @@ const App: React.FC = () => {
             members={allMembers}
             setMembers={setAllMembers}
             onNext={() => setView(AppView.SETTINGS)}
+            onViewHistory={() => setView(AppView.HISTORY)}
           />
         )}
 
