@@ -8,6 +8,7 @@ import DrawingView from './views/DrawingView';
 import ResultView from './views/ResultView';
 import HistoryView from './views/HistoryView';
 import Header from './components/Header';
+import { supabase } from './supabaseClient';
 
 const STORAGE_KEY = 'ap_golf_members';
 
@@ -45,6 +46,24 @@ const App: React.FC = () => {
     localStorage.setItem('ap_golf_history', JSON.stringify(history));
   }, [history]);
 
+  // Fetch from Supabase on load
+  useEffect(() => {
+    const fetchData = async () => {
+      // 1. Fetch Members
+      const { data: dbMembers, error: mError } = await supabase.from('members').select('*');
+      if (!mError && dbMembers && dbMembers.length > 0) {
+        setAllMembers(dbMembers.map(m => ({ id: m.id, name: m.name })));
+      }
+
+      // 2. Fetch History
+      const { data: dbHistory, error: hError } = await supabase.from('match_history').select('*').order('date', { ascending: false });
+      if (!hError && dbHistory) {
+        setHistory(dbHistory as MatchRecord[]);
+      }
+    };
+    fetchData();
+  }, []);
+
   const handleStartDraw = (participantIds: string[], sizes: number[]) => {
     setSelectedMemberIds(participantIds);
     setGroupSizes(sizes);
@@ -61,32 +80,88 @@ const App: React.FC = () => {
     setView(AppView.MANAGE_MEMBERS);
   };
 
-  const handleSaveScores = (groupsWithScores: (DrawingGroup & { scores: ScoreEntry[] })[], golfCourse?: string) => {
+  const syncMembersToDb = async (members: Member[]) => {
+    try {
+      // Simple upsert logic
+      await supabase.from('members').upsert(
+        members.map(m => ({ id: m.id, name: m.name }))
+      );
+    } catch (e) {
+      console.error('DB Sync Error (Members)', e);
+    }
+  };
+
+  const handleSetAllMembers = (update: Member[] | ((prev: Member[]) => Member[])) => {
+    const newMembers = typeof update === 'function' ? update(allMembers) : update;
+    setAllMembers(newMembers);
+    syncMembersToDb(newMembers);
+  };
+
+  const handleSaveScores = async (groupsWithScores: (DrawingGroup & { scores: ScoreEntry[] })[], golfCourse?: string) => {
     const newRecord: MatchRecord = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
       golfCourse,
       groups: groupsWithScores
     };
+
+    // 1. Update State
     setHistory(prev => [newRecord, ...prev]);
+
+    // 2. Save to DB
+    try {
+      await supabase.from('match_history').insert({
+        id: newRecord.id,
+        date: newRecord.date,
+        golf_course: newRecord.golfCourse,
+        groups: newRecord.groups
+      });
+    } catch (e) {
+      console.error('DB Save Error', e);
+    }
+
     setView(AppView.HISTORY);
     setDrawingResults([]);
   };
 
-  const handleDeleteHistory = (recordId: string) => {
+  const handleDeleteHistory = async (recordId: string) => {
     setHistory(prev => prev.filter(r => r.id !== recordId));
+    try {
+      await supabase.from('match_history').delete().eq('id', recordId);
+    } catch (e) {
+      console.error('DB Delete Error', e);
+    }
   };
 
-  const handleUpdateGolfCourse = (recordId: string, golfCourse: string) => {
+  const handleUpdateGolfCourse = async (recordId: string, golfCourse: string) => {
     setHistory(prev => prev.map(record =>
       record.id === recordId ? { ...record, golfCourse } : record
     ));
+    try {
+      await supabase.from('match_history').update({ golf_course: golfCourse }).eq('id', recordId);
+    } catch (e) {
+      console.error('DB Update Error', e);
+    }
   };
 
-  const handleImportData = (newHistory: MatchRecord[], newMembers: Member[]) => {
-    if (newHistory.length > 0) setHistory(newHistory);
-    if (newMembers.length > 0) setAllMembers(newMembers);
-    alert('데이터를 성공적으로 불러왔습니다!');
+  const handleImportData = async (newHistory: MatchRecord[], newMembers: Member[]) => {
+    if (newHistory.length > 0) {
+      setHistory(newHistory);
+      // Bulk insert history
+      await supabase.from('match_history').upsert(
+        newHistory.map(h => ({
+          id: h.id,
+          date: h.date,
+          golf_course: h.golfCourse,
+          groups: h.groups
+        }))
+      );
+    }
+    if (newMembers.length > 0) {
+      setAllMembers(newMembers);
+      await syncMembersToDb(newMembers);
+    }
+    alert('데이터를 성공적으로 불러오고 DB와 동기화했습니다!');
   };
 
   return (
@@ -97,7 +172,7 @@ const App: React.FC = () => {
         {view === AppView.MANAGE_MEMBERS && (
           <ManageMembersView
             members={allMembers}
-            setMembers={setAllMembers}
+            setMembers={handleSetAllMembers}
             onNext={() => setView(AppView.SETTINGS)}
             onViewHistory={() => setView(AppView.HISTORY)}
           />
