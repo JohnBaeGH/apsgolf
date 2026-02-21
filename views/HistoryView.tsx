@@ -7,9 +7,10 @@ interface Props {
     history: MatchRecord[];
     onBack: () => void;
     onDelete: (id: string) => void;
+    onUpdateGolfCourse: (id: string, golfCourse: string) => void;
 }
 
-const HistoryView: React.FC<Props> = ({ history, onBack, onDelete }) => {
+const HistoryView: React.FC<Props> = ({ history, onBack, onDelete, onUpdateGolfCourse }) => {
     // Calculate cumulative scores
     const memberStats = history.reduce((acc, match) => {
         if (!match || !match.groups) return acc;
@@ -125,10 +126,17 @@ const HistoryView: React.FC<Props> = ({ history, onBack, onDelete }) => {
                                             </div>
                                             <div>
                                                 <h4 className="font-black text-[#004071] text-xl leading-tight">{formatDate(record.date)}</h4>
-                                                {record.golfCourse && (
-                                                    <p className="text-[#ABC91A] font-black text-sm italic mt-0.5">@ {record.golfCourse}</p>
-                                                )}
                                                 <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-[#ABC91A] font-black text-sm italic">@</span>
+                                                    <input
+                                                        type="text"
+                                                        value={record.golfCourse || ''}
+                                                        onChange={(e) => onUpdateGolfCourse(record.id, e.target.value)}
+                                                        placeholder="골프장 입력"
+                                                        className="bg-transparent border-b border-dashed border-gray-200 focus:border-[#ABC91A] focus:outline-none text-[#ABC91A] font-black text-sm italic placeholder:text-gray-300 w-40"
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-2">
                                                     <p className="text-gray-400 font-bold text-xs uppercase tracking-wider">{record.groups?.length || 0} 조 경기 완료</p>
                                                 </div>
                                             </div>

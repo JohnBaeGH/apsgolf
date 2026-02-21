@@ -119,8 +119,9 @@ const ResultView: React.FC<Props> = ({ results, history, onReset, onSave }) => {
   const handleSaveMatch = () => {
     if (!golfCourse.trim()) {
       setShowCourseError(true);
-      alert('골프장 이름을 입력해 주세요.');
-      return;
+      if (!confirm('골프장 정보가 없습니다. 나중에 히스토리에서 추가하시겠습니까?')) {
+        return;
+      }
     }
 
     const resultsWithScores = editableGroups.map(group => ({
@@ -262,8 +263,8 @@ const ResultView: React.FC<Props> = ({ results, history, onReset, onSave }) => {
               if (e.target.value.trim()) setShowCourseError(false);
             }}
             className={`w-full px-5 py-4 rounded-2xl border-2 transition-colors font-bold text-[#004071] bg-gray-50/30 focus:outline-none ${showCourseError
-                ? 'border-red-500 bg-red-50 focus:border-red-600'
-                : 'border-gray-100 focus:border-[#ABC91A]'
+              ? 'border-red-500 bg-red-50 focus:border-red-600'
+              : 'border-gray-100 focus:border-[#ABC91A]'
               }`}
           />
           {showCourseError && (

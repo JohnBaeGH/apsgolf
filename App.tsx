@@ -77,6 +77,12 @@ const App: React.FC = () => {
     setHistory(prev => prev.filter(r => r.id !== recordId));
   };
 
+  const handleUpdateGolfCourse = (recordId: string, golfCourse: string) => {
+    setHistory(prev => prev.map(record =>
+      record.id === recordId ? { ...record, golfCourse } : record
+    ));
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F9FA]">
       <Header onViewHistory={() => setView(AppView.HISTORY)} />
@@ -121,6 +127,7 @@ const App: React.FC = () => {
             history={history}
             onBack={() => setView(AppView.MANAGE_MEMBERS)}
             onDelete={handleDeleteHistory}
+            onUpdateGolfCourse={handleUpdateGolfCourse}
           />
         )}
       </main>
