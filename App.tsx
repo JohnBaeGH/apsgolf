@@ -7,6 +7,7 @@ import SettingsView from './views/SettingsView';
 import DrawingView from './views/DrawingView';
 import ResultView from './views/ResultView';
 import HistoryView from './views/HistoryView';
+import CompareView from './views/CompareView';
 import Header from './components/Header';
 import { supabase } from './supabaseClient';
 
@@ -240,6 +241,14 @@ const App: React.FC = () => {
             onUpdateGolfCourse={handleUpdateGolfCourse}
             onUpdateScore={handleUpdateScore}
             onImportData={handleImportData}
+            onCompare={() => setView(AppView.COMPARE)}
+          />
+        )}
+
+        {view === AppView.COMPARE && (
+          <CompareView
+            history={history}
+            onBack={() => setView(AppView.HISTORY)}
           />
         )}
       </main>

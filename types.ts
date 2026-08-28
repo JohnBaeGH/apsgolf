@@ -26,7 +26,8 @@ export enum AppView {
   SETTINGS = 'SETTINGS',
   DRAWING = 'DRAWING',
   RESULT = 'RESULT',
-  HISTORY = 'HISTORY'
+  HISTORY = 'HISTORY',
+  COMPARE = 'COMPARE'
 }
 
 export interface AppState {

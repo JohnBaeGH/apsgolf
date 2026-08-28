@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { MatchRecord, ScoreEntry, Member } from '../types';
-import { Calendar, Trophy, ArrowLeft, Trash2, Award, Download, Upload, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Calendar, Trophy, ArrowLeft, Trash2, Award, Download, Upload, TrendingUp, TrendingDown, Minus, GitCompareArrows } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { ScoreDelta, sortHistoryByDateDesc, buildScoreDeltas, formatDeltaLabel, formatShortDate } from '../scoreDeltas';
 
 interface Props {
     history: MatchRecord[];
@@ -11,17 +12,10 @@ interface Props {
     onUpdateGolfCourse: (id: string, golfCourse: string) => void;
     onUpdateScore: (recordId: string, groupId: number, memberName: string, score: number) => void;
     onImportData: (history: MatchRecord[], members: Member[]) => void;
+    onCompare: () => void;
 }
 
-/** 직전 참가 경기 대비 타수 변화 */
-interface ScoreDelta {
-    prevScore: number;
-    diff: number;
-    prevDate: string;
-    prevCourse?: string;
-}
-
-const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, onUpdateGolfCourse, onUpdateScore, onImportData }) => {
+const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, onUpdateGolfCourse, onUpdateScore, onImportData, onCompare }) => {
     // 입력 중인 점수(확정 전) 임시 보관 — key: recordId|groupId|memberName
     const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
 
@@ -29,46 +23,10 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
         `${recordId}|${groupId}|${memberName}`;
 
     // 최신 경기가 위로 오도록 날짜 내림차순 정렬
-    const sortedHistory = useMemo(() => {
-        return [...history]
-            .filter(Boolean)
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [history]);
+    const sortedHistory = useMemo(() => sortHistoryByDateDesc(history), [history]);
 
-    /**
-     * 각 경기·선수별로 "그 선수가 직전에 친 경기" 대비 타수 차이를 계산한다.
-     * 오래된 경기부터 훑으며 선수별 마지막 점수를 기억한다.
-     * 골프는 타수가 낮을수록 좋으므로 diff < 0 이 개선(-), diff > 0 이 악화(+).
-     */
-    const scoreDeltas = useMemo(() => {
-        const map: Record<string, Record<string, ScoreDelta>> = {};
-        const lastPlayed: Record<string, { score: number; date: string; course?: string }> = {};
-
-        [...sortedHistory].reverse().forEach(record => {
-            map[record.id] = {};
-            (record.groups || []).forEach(group => {
-                (group?.scores || []).forEach(entry => {
-                    if (!entry || !entry.memberName || !(entry.score > 0)) return;
-                    const prev = lastPlayed[entry.memberName];
-                    if (prev) {
-                        map[record.id][entry.memberName] = {
-                            prevScore: prev.score,
-                            diff: entry.score - prev.score,
-                            prevDate: prev.date,
-                            prevCourse: prev.course,
-                        };
-                    }
-                    lastPlayed[entry.memberName] = {
-                        score: entry.score,
-                        date: record.date,
-                        course: record.golfCourse,
-                    };
-                });
-            });
-        });
-
-        return map;
-    }, [sortedHistory]);
+    // 각 경기·선수별 직전 경기 대비 타수 변화
+    const scoreDeltas = useMemo(() => buildScoreDeltas(sortedHistory), [sortedHistory]);
 
     // 누적 평균 순위
     const memberStats = history.reduce((acc, match) => {
@@ -223,39 +181,33 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
         });
     };
 
-    const formatShortDate = (dateString: string) => {
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return '';
-        return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
-    };
-
     /** 직전 경기 대비 변화 배지 */
     const DeltaBadge: React.FC<{ delta?: ScoreDelta; size?: 'sm' | 'xs' }> = ({ delta, size = 'sm' }) => {
-        const pad = size === 'sm' ? 'px-2 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]';
-        const iconSize = size === 'sm' ? 12 : 10;
-
         // 직전 기록이 없으면(첫 참가) 배지를 그리지 않는다
         if (!delta) return null;
 
+        const pad = size === 'sm' ? 'px-2.5 py-1' : 'px-2 py-0.5';
+        // 증감 숫자는 한눈에 들어오도록 크게
+        const numberSize = size === 'sm' ? 'text-xl' : 'text-lg';
+        const iconSize = size === 'sm' ? 16 : 14;
+
         const tooltip = `직전 ${formatShortDate(delta.prevDate)}${delta.prevCourse ? ` ${delta.prevCourse}` : ''} ${delta.prevScore}타`;
 
-        if (delta.diff === 0) {
-            return (
-                <span title={tooltip} className={`${pad} rounded-lg font-black text-gray-400 bg-gray-100 flex items-center gap-0.5 whitespace-nowrap`}>
-                    <Minus size={iconSize} />±0
-                </span>
-            );
-        }
-
         const improved = delta.diff < 0;
+        const toneClass = delta.diff === 0
+            ? 'text-gray-400 bg-gray-100'
+            : improved
+                ? 'text-[#5F7A00] bg-[#ABC91A]/20'
+                : 'text-red-500 bg-red-50';
+        const Icon = delta.diff === 0 ? Minus : improved ? TrendingDown : TrendingUp;
+
         return (
             <span
                 title={tooltip}
-                className={`${pad} rounded-lg font-black flex items-center gap-0.5 whitespace-nowrap ${improved ? 'text-[#5F7A00] bg-[#ABC91A]/20' : 'text-red-500 bg-red-50'
-                    }`}
+                className={`${pad} rounded-xl font-black flex items-center gap-1 whitespace-nowrap leading-none ${toneClass}`}
             >
-                {improved ? <TrendingDown size={iconSize} /> : <TrendingUp size={iconSize} />}
-                {delta.diff > 0 ? `+${delta.diff}` : delta.diff}
+                <Icon size={iconSize} className="shrink-0" />
+                <span className={numberSize}>{formatDeltaLabel(delta.diff)}</span>
             </span>
         );
     };
@@ -275,6 +227,13 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                         경기 기록 및 멤버 순위
                     </h2>
                 </div>
+                <button
+                    onClick={onCompare}
+                    className="bg-[#004071] text-white px-6 py-4 rounded-2xl font-black hover:bg-[#003056] transition-all flex items-center gap-2 shadow-lg shadow-[#004071]/20"
+                >
+                    <GitCompareArrows size={22} />
+                    직전 경기 비교
+                </button>
             </div>
 
             {/* Match History List */}
@@ -358,7 +317,7 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                                                 <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
                                                     <span className="font-black text-[#ABC91A] uppercase tracking-widest text-sm italic">Group {group.id}</span>
                                                 </div>
-                                                <div className="space-y-3">
+                                                <div className="space-y-4">
                                                     {getGroupRows(group).map((row, sIdx) => {
                                                         const key = draftKey(record.id, group.id, row.memberName);
                                                         const draft = scoreDrafts[key];
@@ -366,11 +325,11 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                                                             ? draft
                                                             : (row.score > 0 ? String(row.score) : '');
                                                         return (
-                                                            <div key={sIdx} className="flex justify-between items-center gap-2 text-[#004071] font-bold">
-                                                                <span className="truncate">{row.memberName}</span>
-                                                                <div className="flex items-center gap-2 shrink-0">
+                                                            <div key={sIdx} className="text-[#004071] font-bold">
+                                                                <p className="mb-1.5">{row.memberName}</p>
+                                                                <div className="flex items-center justify-between gap-2">
                                                                     <DeltaBadge delta={recordDeltas[row.memberName]} size="xs" />
-                                                                    <div className="flex items-center gap-1">
+                                                                    <div className="flex items-center gap-1 ml-auto">
                                                                         <input
                                                                             type="number"
                                                                             inputMode="numeric"
@@ -381,7 +340,7 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                                                                             onKeyDown={(e) => {
                                                                                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                                                                             }}
-                                                                            className="w-14 bg-white border-2 border-gray-200 rounded-xl px-1 py-1 text-center font-black text-[#004071] focus:border-[#ABC91A] focus:outline-none transition-colors text-sm"
+                                                                            className="w-16 bg-white border-2 border-gray-200 rounded-xl px-1 py-1 text-center font-black text-[#004071] focus:border-[#ABC91A] focus:outline-none transition-colors text-base"
                                                                         />
                                                                         <span className="text-gray-400 font-bold text-xs">타</span>
                                                                     </div>
