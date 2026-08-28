@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { MatchRecord, ScoreEntry, Member } from '../types';
-import { Calendar, Trophy, ArrowLeft, Trash2, User, ChevronRight, Award, Download, Upload } from 'lucide-react';
+import { Calendar, Trophy, ArrowLeft, Trash2, Award, Download, Upload, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface Props {
@@ -9,11 +9,68 @@ interface Props {
     onBack: () => void;
     onDelete: (id: string) => void;
     onUpdateGolfCourse: (id: string, golfCourse: string) => void;
+    onUpdateScore: (recordId: string, groupId: number, memberName: string, score: number) => void;
     onImportData: (history: MatchRecord[], members: Member[]) => void;
 }
 
-const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, onUpdateGolfCourse, onImportData }) => {
-    // Calculate cumulative scores
+/** 직전 참가 경기 대비 타수 변화 */
+interface ScoreDelta {
+    prevScore: number;
+    diff: number;
+    prevDate: string;
+    prevCourse?: string;
+}
+
+const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, onUpdateGolfCourse, onUpdateScore, onImportData }) => {
+    // 입력 중인 점수(확정 전) 임시 보관 — key: recordId|groupId|memberName
+    const [scoreDrafts, setScoreDrafts] = useState<Record<string, string>>({});
+
+    const draftKey = (recordId: string, groupId: number, memberName: string) =>
+        `${recordId}|${groupId}|${memberName}`;
+
+    // 최신 경기가 위로 오도록 날짜 내림차순 정렬
+    const sortedHistory = useMemo(() => {
+        return [...history]
+            .filter(Boolean)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [history]);
+
+    /**
+     * 각 경기·선수별로 "그 선수가 직전에 친 경기" 대비 타수 차이를 계산한다.
+     * 오래된 경기부터 훑으며 선수별 마지막 점수를 기억한다.
+     * 골프는 타수가 낮을수록 좋으므로 diff < 0 이 개선(-), diff > 0 이 악화(+).
+     */
+    const scoreDeltas = useMemo(() => {
+        const map: Record<string, Record<string, ScoreDelta>> = {};
+        const lastPlayed: Record<string, { score: number; date: string; course?: string }> = {};
+
+        [...sortedHistory].reverse().forEach(record => {
+            map[record.id] = {};
+            (record.groups || []).forEach(group => {
+                (group?.scores || []).forEach(entry => {
+                    if (!entry || !entry.memberName || !(entry.score > 0)) return;
+                    const prev = lastPlayed[entry.memberName];
+                    if (prev) {
+                        map[record.id][entry.memberName] = {
+                            prevScore: prev.score,
+                            diff: entry.score - prev.score,
+                            prevDate: prev.date,
+                            prevCourse: prev.course,
+                        };
+                    }
+                    lastPlayed[entry.memberName] = {
+                        score: entry.score,
+                        date: record.date,
+                        course: record.golfCourse,
+                    };
+                });
+            });
+        });
+
+        return map;
+    }, [sortedHistory]);
+
+    // 누적 평균 순위
     const memberStats = history.reduce((acc, match) => {
         if (!match || !match.groups) return acc;
         match.groups.forEach(group => {
@@ -59,8 +116,8 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
     });
 
     const calculateMatchRankings = (record: MatchRecord) => {
-        const matchScores = record.groups.flatMap(g => g.scores || [])
-            .filter(s => s.score > 0)
+        const matchScores = (record.groups || []).flatMap(g => g?.scores || [])
+            .filter(s => s && s.score > 0)
             .sort((a, b) => a.score - b.score);
 
         return matchScores.map((player, idx, arr) => {
@@ -72,6 +129,50 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
             }
             return { ...player, rank };
         });
+    };
+
+    /** 해당 경기 참가자 중 직전 기록이 있는 사람들의 평균 타수 변화 */
+    const calculateMatchDelta = (record: MatchRecord) => {
+        const deltas = Object.values(scoreDeltas[record.id] || {});
+        if (deltas.length === 0) return null;
+        const sum = deltas.reduce((acc, d) => acc + d.diff, 0);
+        return { avg: sum / deltas.length, count: deltas.length };
+    };
+
+    /** 그룹 안에서 렌더링할 선수 목록 — members 기준으로 맞추고 점수는 scores에서 찾는다 */
+    const getGroupRows = (group: MatchRecord['groups'][number]): ScoreEntry[] => {
+        if (group?.members && group.members.length > 0) {
+            return group.members.map(name => ({
+                memberName: name,
+                score: group.scores?.find(s => s.memberName === name)?.score ?? 0,
+            }));
+        }
+        return group?.scores || [];
+    };
+
+    const handleScoreDraft = (recordId: string, groupId: number, memberName: string, value: string) => {
+        setScoreDrafts(prev => ({ ...prev, [draftKey(recordId, groupId, memberName)]: value }));
+    };
+
+    const commitScore = (recordId: string, groupId: number, memberName: string, originalScore: number) => {
+        const key = draftKey(recordId, groupId, memberName);
+        const raw = scoreDrafts[key];
+
+        setScoreDrafts(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
+
+        if (raw === undefined) return;
+
+        const trimmed = raw.trim();
+        const parsed = trimmed === '' ? 0 : parseInt(trimmed, 10);
+        const nextScore = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+
+        if (nextScore !== originalScore) {
+            onUpdateScore(recordId, groupId, memberName, nextScore);
+        }
     };
 
     const handleExport = () => {
@@ -122,6 +223,43 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
         });
     };
 
+    const formatShortDate = (dateString: string) => {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return '';
+        return date.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+    };
+
+    /** 직전 경기 대비 변화 배지 */
+    const DeltaBadge: React.FC<{ delta?: ScoreDelta; size?: 'sm' | 'xs' }> = ({ delta, size = 'sm' }) => {
+        const pad = size === 'sm' ? 'px-2 py-1 text-xs' : 'px-1.5 py-0.5 text-[10px]';
+        const iconSize = size === 'sm' ? 12 : 10;
+
+        // 직전 기록이 없으면(첫 참가) 배지를 그리지 않는다
+        if (!delta) return null;
+
+        const tooltip = `직전 ${formatShortDate(delta.prevDate)}${delta.prevCourse ? ` ${delta.prevCourse}` : ''} ${delta.prevScore}타`;
+
+        if (delta.diff === 0) {
+            return (
+                <span title={tooltip} className={`${pad} rounded-lg font-black text-gray-400 bg-gray-100 flex items-center gap-0.5 whitespace-nowrap`}>
+                    <Minus size={iconSize} />±0
+                </span>
+            );
+        }
+
+        const improved = delta.diff < 0;
+        return (
+            <span
+                title={tooltip}
+                className={`${pad} rounded-lg font-black flex items-center gap-0.5 whitespace-nowrap ${improved ? 'text-[#5F7A00] bg-[#ABC91A]/20' : 'text-red-500 bg-red-50'
+                    }`}
+            >
+                {improved ? <TrendingDown size={iconSize} /> : <TrendingUp size={iconSize} />}
+                {delta.diff > 0 ? `+${delta.diff}` : delta.diff}
+            </span>
+        );
+    };
+
     return (
         <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
@@ -141,17 +279,24 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
 
             {/* Match History List */}
             <section className="space-y-6">
-                <div className="flex items-center gap-3 mb-4 px-4">
-                    <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
-                        <Calendar size={24} />
+                <div className="flex items-center justify-between gap-3 mb-4 px-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-blue-50 rounded-2xl text-blue-600">
+                            <Calendar size={24} />
+                        </div>
+                        <h3 className="text-2xl font-black text-[#004071]">최근 매치 이력</h3>
                     </div>
-                    <h3 className="text-2xl font-black text-[#004071]">최근 매치 이력</h3>
+                    <p className="text-gray-400 font-bold text-sm">
+                        점수 칸을 눌러 바로 수정할 수 있습니다 · 배지는 직전 경기 대비 타수
+                    </p>
                 </div>
 
-                {history.length > 0 ? (
+                {sortedHistory.length > 0 ? (
                     <div className="space-y-6">
-                        {history.map((record) => {
+                        {sortedHistory.map((record) => {
                             const matchRankings = calculateMatchRankings(record);
+                            const recordDeltas = scoreDeltas[record.id] || {};
+                            const matchDelta = calculateMatchDelta(record);
                             return (
                                 <motion.div
                                     key={record.id}
@@ -179,8 +324,22 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                                                         className="bg-transparent border-b border-dashed border-gray-200 focus:border-[#ABC91A] focus:outline-none text-[#ABC91A] font-black text-sm italic placeholder:text-gray-300 w-40"
                                                     />
                                                 </div>
-                                                <div className="flex items-center gap-2 mt-2">
+                                                <div className="flex items-center gap-2 mt-2 flex-wrap">
                                                     <p className="text-gray-400 font-bold text-xs uppercase tracking-wider">{record.groups?.length || 0} 조 경기 완료</p>
+                                                    {matchDelta && (
+                                                        <span
+                                                            title={`직전 경기 기록이 있는 ${matchDelta.count}명 기준`}
+                                                            className={`px-2 py-1 rounded-lg text-xs font-black flex items-center gap-1 ${matchDelta.avg < 0
+                                                                ? 'text-[#5F7A00] bg-[#ABC91A]/20'
+                                                                : matchDelta.avg > 0
+                                                                    ? 'text-red-500 bg-red-50'
+                                                                    : 'text-gray-400 bg-gray-100'
+                                                                }`}
+                                                        >
+                                                            {matchDelta.avg < 0 ? <TrendingDown size={12} /> : matchDelta.avg > 0 ? <TrendingUp size={12} /> : <Minus size={12} />}
+                                                            직전 대비 평균 {matchDelta.avg === 0 ? '±0' : `${matchDelta.avg > 0 ? '+' : ''}${matchDelta.avg.toFixed(1)}`}타
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -200,16 +359,36 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                                                     <span className="font-black text-[#ABC91A] uppercase tracking-widest text-sm italic">Group {group.id}</span>
                                                 </div>
                                                 <div className="space-y-3">
-                                                    {group.scores && group.scores.map((score, sIdx) => (
-                                                        <div key={sIdx} className="flex justify-between items-center text-[#004071] font-bold">
-                                                            <span className="flex items-center gap-2">
-                                                                {score.memberName}
-                                                            </span>
-                                                            <span className="font-black">
-                                                                {score.score > 0 ? `${score.score}타` : '-'}
-                                                            </span>
-                                                        </div>
-                                                    ))}
+                                                    {getGroupRows(group).map((row, sIdx) => {
+                                                        const key = draftKey(record.id, group.id, row.memberName);
+                                                        const draft = scoreDrafts[key];
+                                                        const inputValue = draft !== undefined
+                                                            ? draft
+                                                            : (row.score > 0 ? String(row.score) : '');
+                                                        return (
+                                                            <div key={sIdx} className="flex justify-between items-center gap-2 text-[#004071] font-bold">
+                                                                <span className="truncate">{row.memberName}</span>
+                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                    <DeltaBadge delta={recordDeltas[row.memberName]} size="xs" />
+                                                                    <div className="flex items-center gap-1">
+                                                                        <input
+                                                                            type="number"
+                                                                            inputMode="numeric"
+                                                                            placeholder="-"
+                                                                            value={inputValue}
+                                                                            onChange={(e) => handleScoreDraft(record.id, group.id, row.memberName, e.target.value)}
+                                                                            onBlur={() => commitScore(record.id, group.id, row.memberName, row.score)}
+                                                                            onKeyDown={(e) => {
+                                                                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                                            }}
+                                                                            className="w-14 bg-white border-2 border-gray-200 rounded-xl px-1 py-1 text-center font-black text-[#004071] focus:border-[#ABC91A] focus:outline-none transition-colors text-sm"
+                                                                        />
+                                                                        <span className="text-gray-400 font-bold text-xs">타</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         ))}
@@ -230,6 +409,7 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
                                                         </span>
                                                         <span className="text-[#004071] font-bold text-sm">{ranker.memberName}</span>
                                                         <span className="text-gray-400 text-xs">{ranker.score}타</span>
+                                                        <DeltaBadge delta={recordDeltas[ranker.memberName]} size="xs" />
                                                     </div>
                                                 ))}
                                                 {matchRankings.length > 5 && (
@@ -261,35 +441,37 @@ const HistoryView: React.FC<Props> = ({ history, allMembers, onBack, onDelete, o
 
                 {leaderboardWithRanks.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {leaderboardWithRanks.map((player, idx) => (
-                            <motion.div
-                                key={player.name}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: idx * 0.05 }}
-                                className={`p-6 rounded-3xl border-2 flex items-center justify-between group transition-all
+                        {leaderboardWithRanks.map((player, idx) => {
+                            return (
+                                <motion.div
+                                    key={player.name}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: idx * 0.05 }}
+                                    className={`p-6 rounded-3xl border-2 flex items-center justify-between group transition-all
                   ${player.rank === 1 ? 'bg-yellow-50 border-yellow-100' : 'bg-gray-50/50 border-gray-100'}
                 `}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-lg
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-lg
                     ${player.rank === 1 ? 'bg-yellow-400 text-white' : 'bg-[#004071] text-white'}
                   `}>
-                                        {player.rank}
+                                            {player.rank}
+                                        </div>
+                                        <div>
+                                            <p className="font-black text-[#004071] text-xl">{player.name}</p>
+                                            <p className="text-gray-400 text-sm font-bold">{player.count}경기 참여</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="font-black text-[#004071] text-xl">{player.name}</p>
-                                        <p className="text-gray-400 text-sm font-bold">{player.count}경기 참여</p>
+                                    <div className="text-right">
+                                        <p className={`text-2xl font-black ${player.rank === 1 ? 'text-yellow-600' : 'text-[#004071]'}`}>
+                                            {player.avgScore} <span className="text-sm">타</span>
+                                        </p>
+                                        <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Lifetime Avg</p>
                                     </div>
-                                </div>
-                                <div className="text-right">
-                                    <p className={`text-2xl font-black ${player.rank === 1 ? 'text-yellow-600' : 'text-[#004071]'}`}>
-                                        {player.avgScore} <span className="text-sm">타</span>
-                                    </p>
-                                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Lifetime Avg</p>
-                                </div>
-                            </motion.div>
-                        ))}
+                                </motion.div>
+                            );
+                        })}
                     </div>
                 ) : (
                     <div className="text-center py-12 text-gray-400 font-bold">

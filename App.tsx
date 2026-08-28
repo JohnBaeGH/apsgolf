@@ -147,6 +147,31 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateScore = async (recordId: string, groupId: number, memberName: string, score: number) => {
+    const record = history.find(r => r.id === recordId);
+    if (!record) return;
+
+    const updatedGroups = (record.groups || []).map(group => {
+      if (group.id !== groupId) return group;
+      const scores = [...(group.scores || [])];
+      const idx = scores.findIndex(s => s.memberName === memberName);
+      if (idx >= 0) {
+        scores[idx] = { ...scores[idx], score };
+      } else {
+        scores.push({ memberName, score });
+      }
+      return { ...group, scores };
+    });
+
+    setHistory(prev => prev.map(r => (r.id === recordId ? { ...r, groups: updatedGroups } : r)));
+
+    try {
+      await supabase.from('match_history').update({ groups: updatedGroups }).eq('id', recordId);
+    } catch (e) {
+      console.error('DB Score Update Error', e);
+    }
+  };
+
   const handleImportData = async (newHistory: MatchRecord[], newMembers: Member[]) => {
     if (newHistory.length > 0) {
       setHistory(newHistory);
@@ -213,6 +238,7 @@ const App: React.FC = () => {
             onBack={() => setView(AppView.MANAGE_MEMBERS)}
             onDelete={handleDeleteHistory}
             onUpdateGolfCourse={handleUpdateGolfCourse}
+            onUpdateScore={handleUpdateScore}
             onImportData={handleImportData}
           />
         )}
