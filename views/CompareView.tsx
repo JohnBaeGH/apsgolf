@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { MatchRecord } from '../types';
-import { ArrowLeft, ArrowRight, TrendingUp, TrendingDown, Minus, GitCompareArrows, CalendarDays } from 'lucide-react';
+import { ArrowLeft, ArrowRight, TrendingUp, TrendingDown, Minus, GitCompareArrows, CalendarDays, Share2, Copy, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import {
     ScoreDelta,
@@ -29,6 +29,13 @@ const CompareView: React.FC<Props> = ({ history, onBack }) => {
 
     // 기준 경기 — 기본값은 가장 최근 경기
     const [selectedId, setSelectedId] = useState<string>(() => sortedHistory[0]?.id || '');
+    const [copied, setCopied] = useState(false);
+    const [canShare, setCanShare] = useState(false);
+
+    // 모바일 등 Web Share 를 지원하는 환경에서만 '공유하기' 버튼을 노출한다
+    useEffect(() => {
+        setCanShare(typeof navigator !== 'undefined' && typeof navigator.share === 'function');
+    }, []);
 
     const selectedRecord = sortedHistory.find(r => r.id === selectedId) || sortedHistory[0];
     const selectedIdx = sortedHistory.findIndex(r => r.id === selectedRecord?.id);
@@ -67,6 +74,91 @@ const CompareView: React.FC<Props> = ({ history, onBack }) => {
         };
     }, [selectedRecord, scoreDeltas]);
 
+    /** 문자·카톡으로 그대로 붙여넣을 수 있는 공유 메시지를 만든다 */
+    const buildShareText = () => {
+        if (!selectedRecord) return '';
+
+        const header = `[AP시스템 임원 Golf 직전 경기 비교]`;
+        const when = formatLongDate(selectedRecord.date);
+        const where = selectedRecord.golfCourse ? ` @ ${selectedRecord.golfCourse}` : '';
+
+        const lines = compared.map(row => {
+            const d = row.delta!;
+            const mark = d.diff < 0 ? '▼' : d.diff > 0 ? '▲' : '-';
+            return `${mark} ${row.memberName} ${d.prevScore} → ${row.currentScore} (${formatDeltaLabel(d.diff)}타)`;
+        });
+
+        // 문자로 보낼 때 길지 않도록 꼬리말은 한 문단으로 묶는다
+        const footer: string[] = [];
+        if (firstTimers.length > 0) {
+            footer.push(`* 첫 기록: ${firstTimers.map(r => `${r.memberName} ${r.currentScore}타`).join(', ')}`);
+        }
+        if (summary) {
+            const avgText = summary.avg === 0 ? '±0' : `${summary.avg > 0 ? '+' : ''}${summary.avg.toFixed(1)}`;
+            footer.push(`* 줄임 ${summary.improved}명 / 늘어남 ${summary.worsened}명 / 동일 ${summary.even}명 / 평균 ${avgText}타`);
+        }
+
+        const parts = [`${header}\n${when}${where}`];
+        if (lines.length > 0) parts.push(lines.join('\n'));
+        if (footer.length > 0) parts.push(footer.join('\n'));
+
+        return parts.join('\n\n');
+    };
+
+    /** 클립보드 API 를 못 쓰는 환경(구형 브라우저·비보안 컨텍스트)까지 커버한다 */
+    const writeToClipboard = async (text: string) => {
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+        } catch (e) {
+            console.error('Clipboard API failed', e);
+        }
+
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return ok;
+        } catch (e) {
+            console.error('Fallback copy failed', e);
+            return false;
+        }
+    };
+
+    const handleCopy = async () => {
+        const text = buildShareText();
+        if (!text) return;
+
+        const ok = await writeToClipboard(text);
+        if (ok) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } else {
+            alert('복사에 실패했습니다. 메시지를 길게 눌러 직접 복사해 주세요.\n\n' + text);
+        }
+    };
+
+    const handleShare = async () => {
+        const text = buildShareText();
+        if (!text) return;
+
+        try {
+            await navigator.share({ title: 'AP시스템 임원 Golf 직전 경기 비교', text });
+        } catch (e) {
+            // 사용자가 공유를 취소한 경우는 조용히 넘어간다
+            if ((e as DOMException)?.name !== 'AbortError') {
+                handleCopy();
+            }
+        }
+    };
+
     const tone = (diff: number) =>
         diff < 0
             ? { text: 'text-[#5F7A00]', bg: 'bg-[#ABC91A]/20', border: 'border-[#ABC91A]/40', Icon: TrendingDown }
@@ -92,17 +184,38 @@ const CompareView: React.FC<Props> = ({ history, onBack }) => {
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-            <div className="flex items-center gap-4">
-                <button
-                    onClick={onBack}
-                    className="p-3 hover:bg-white rounded-2xl transition-all text-[#004071] border-2 border-transparent hover:border-gray-100"
-                >
-                    <ArrowLeft size={24} />
-                </button>
-                <h2 className="text-3xl font-black text-[#004071] flex items-center gap-3">
-                    <GitCompareArrows className="text-[#ABC91A]" size={36} />
-                    직전 경기 비교
-                </h2>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={onBack}
+                        className="p-3 hover:bg-white rounded-2xl transition-all text-[#004071] border-2 border-transparent hover:border-gray-100"
+                    >
+                        <ArrowLeft size={24} />
+                    </button>
+                    <h2 className="text-3xl font-black text-[#004071] flex items-center gap-3">
+                        <GitCompareArrows className="text-[#ABC91A]" size={36} />
+                        직전 경기 비교
+                    </h2>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleCopy}
+                        className="flex-1 md:flex-none bg-white border-2 border-[#004071] text-[#004071] px-5 py-3.5 rounded-2xl font-black hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+                    >
+                        {copied ? <Check size={20} className="text-green-500" /> : <Copy size={20} />}
+                        {copied ? '복사됨' : '메시지 복사'}
+                    </button>
+                    {canShare && (
+                        <button
+                            onClick={handleShare}
+                            className="flex-1 md:flex-none bg-[#ABC91A] text-[#004071] px-5 py-3.5 rounded-2xl font-black hover:bg-[#99b317] transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ABC91A]/20"
+                        >
+                            <Share2 size={20} />
+                            공유하기
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* 기준 경기 선택 */}
@@ -243,10 +356,20 @@ const CompareView: React.FC<Props> = ({ history, onBack }) => {
                 </div>
             )}
 
-            <div className="flex justify-center pt-4">
+            <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-4 pt-4">
+                <button
+                    onClick={canShare ? handleShare : handleCopy}
+                    className="bg-[#ABC91A] text-[#004071] px-10 py-5 rounded-full font-black text-lg hover:bg-[#99b317] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#ABC91A]/20"
+                >
+                    {canShare
+                        ? <><Share2 size={24} />결과 공유하기</>
+                        : copied
+                            ? <><Check size={24} className="text-green-600" />복사됨</>
+                            : <><Copy size={24} />메시지 복사하기</>}
+                </button>
                 <button
                     onClick={onBack}
-                    className="bg-[#004071] text-white px-12 py-5 rounded-full font-black text-lg hover:bg-[#003056] transition-all flex items-center gap-2 shadow-xl shadow-[#004071]/20"
+                    className="bg-[#004071] text-white px-10 py-5 rounded-full font-black text-lg hover:bg-[#003056] transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#004071]/20"
                 >
                     <ArrowLeft size={24} />
                     기록으로 돌아가기
